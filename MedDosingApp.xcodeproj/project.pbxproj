@@ -6,8 +6,13 @@
 	objectVersion = 90;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C558C18A3092D21D00F7C350 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = C558C1893092D21600F7C350 /* README.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* MedDosingApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MedDosingApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C558C1893092D21600F7C350 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -30,6 +35,7 @@
 		000000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				C558C1893092D21600F7C350 /* README.md */,
 				000000000000000000000010 /* MedDosingApp */,
 				000000000000000000000020 /* Products */,
 			);
@@ -102,6 +108,7 @@
 		000000000000000140000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				C558C18A3092D21D00F7C350 /* README.md in Resources */,
 			);
 		};
 /* End PBXResourcesBuildPhase section */
