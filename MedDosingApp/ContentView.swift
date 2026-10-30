@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var selectedDays = Set(Weekday.allCases)
     @State private var selectedTimes: Set<DoseTime> = [.morning]
     @State private var notificationStatus = ""
+    @State private var selectedMedication: Medication?
 
     private var todaysDoses: [ScheduledDose] {
         let weekday = Weekday.today
@@ -54,6 +55,13 @@ struct ContentView: View {
         }
         .onChange(of: doseLogs) { _, newValue in
             MedicationStore.save(newValue, key: "doseLogs")
+        }
+        .sheet(item: $selectedMedication) { medication in
+            MedicationEditorView(
+                medication: medication,
+                onSave: updateMedication,
+                onDelete: deleteMedication
+            )
         }
     }
 
@@ -191,24 +199,41 @@ struct ContentView: View {
                     .foregroundStyle(.white)
 
                 ForEach(medications) { medication in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(medication.name)
+                    Button {
+                        selectedMedication = medication
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "pills.fill")
                                 .font(.headline)
-                                .foregroundStyle(.white)
-                            Text("\(medication.frequencyLabel) · \(medication.daysLabel)")
-                                .font(.subheadline)
-                                .foregroundStyle(.white.opacity(0.65))
+                                .foregroundStyle(.mint)
+                                .frame(width: 44, height: 44)
+                                .background(.mint.opacity(0.14), in: Circle())
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(medication.name)
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                                Text("\(medication.frequencyLabel) · \(medication.daysLabel)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.white.opacity(0.65))
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 5) {
+                                Text("\(medication.times.count) reminder\(medication.times.count == 1 ? "" : "s")")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.mint)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.white.opacity(0.55))
+                            }
                         }
-
-                        Spacer()
-
-                        Text("\(medication.times.count) reminder\(medication.times.count == 1 ? "" : "s")")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.mint)
+                        .padding(16)
+                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
-                    .padding(16)
-                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens medication settings")
                 }
             }
         }
@@ -365,6 +390,30 @@ struct ContentView: View {
         }
     }
 
+    private func updateMedication(_ medication: Medication) {
+        guard let index = medications.firstIndex(where: { $0.id == medication.id }) else { return }
+        medications[index] = medication
+        cancelNotifications(for: medication)
+        Task {
+            await scheduleNotifications(for: medication)
+        }
+    }
+
+    private func deleteMedication(_ medication: Medication) {
+        medications.removeAll { $0.id == medication.id }
+        doseLogs.removeAll { $0.medicationID == medication.id }
+        cancelNotifications(for: medication)
+    }
+
+    private func cancelNotifications(for medication: Medication) {
+        let identifiers = Weekday.allCases.flatMap { day in
+            DoseTime.allCases.map { time in
+                "\(medication.id.uuidString)-\(day.calendarValue)-\(time.rawValue)"
+            }
+        }
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
     @MainActor
     private func scheduleNotifications(for medication: Medication) async {
         let center = UNUserNotificationCenter.current()
@@ -403,11 +452,248 @@ struct ContentView: View {
     }
 }
 
+private struct MedicationEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let medication: Medication
+    let onSave: (Medication) -> Void
+    let onDelete: (Medication) -> Void
+
+    @State private var name: String
+    @State private var selectedTimes: Set<DoseTime>
+    @State private var selectedDays: Set<Weekday>
+    @State private var isShowingDeleteConfirmation = false
+
+    init(
+        medication: Medication,
+        onSave: @escaping (Medication) -> Void,
+        onDelete: @escaping (Medication) -> Void
+    ) {
+        self.medication = medication
+        self.onSave = onSave
+        self.onDelete = onDelete
+        _name = State(initialValue: medication.name)
+        _selectedTimes = State(initialValue: medication.times)
+        _selectedDays = State(initialValue: medication.days)
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !selectedTimes.isEmpty &&
+        !selectedDays.isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(red: 0.04, green: 0.08, blue: 0.12)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        MedicationEditorHeader(name: medication.name)
+                        MedicationNameEditor(name: $name)
+                        MedicationScheduleEditor(selectedTimes: $selectedTimes)
+                        MedicationDaysEditor(selectedDays: $selectedDays)
+
+                        Button(role: .destructive) {
+                            isShowingDeleteConfirmation = true
+                        } label: {
+                            Label("Delete medication", systemImage: "trash")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        .padding(.top, 4)
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Edit medication")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(
+                            Medication(
+                                id: medication.id,
+                                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                days: selectedDays,
+                                times: selectedTimes
+                            )
+                        )
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+            .tint(.mint)
+            .alert("Delete \(medication.name)?", isPresented: $isShowingDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    onDelete(medication)
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes the medication, its reminders, and its dose history.")
+            }
+        }
+    }
+}
+
+private struct MedicationEditorHeader: View {
+    let name: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "pills.fill")
+                .font(.title2)
+                .foregroundStyle(.mint)
+                .frame(width: 56, height: 56)
+                .background(.mint.opacity(0.16), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Medication details")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("Keep your treatment plan up to date.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.68))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Editing \(name)")
+    }
+}
+
+private struct MedicationNameEditor: View {
+    @Binding var name: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Medication name", systemImage: "text.cursor")
+                .font(.headline)
+                .foregroundStyle(.white)
+
+            TextField("Medication name", text: $name)
+                .textInputAutocapitalization(.words)
+                .padding(14)
+                .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .foregroundStyle(.white)
+        }
+        .padding(18)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+private struct MedicationScheduleEditor: View {
+    @Binding var selectedTimes: Set<DoseTime>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Daily reminders", systemImage: "clock.fill")
+                .font(.headline)
+                .foregroundStyle(.white)
+
+            Text("Choose when you take this medication.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.68))
+
+            HStack(spacing: 10) {
+                ForEach(DoseTime.allCases) { time in
+                    Button {
+                        toggle(time)
+                    } label: {
+                        VStack(spacing: 7) {
+                            Image(systemName: time.symbol)
+                                .font(.headline)
+                            Text(time.title)
+                                .font(.caption.weight(.semibold))
+                            Text(time.displayTime)
+                                .font(.caption2)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .foregroundStyle(selectedTimes.contains(time) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
+                        .background(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(time.title), \(time.displayTime)")
+                    .accessibilityValue(selectedTimes.contains(time) ? "Selected" : "Not selected")
+                }
+            }
+        }
+        .padding(18)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private func toggle(_ time: DoseTime) {
+        if selectedTimes.contains(time) {
+            guard selectedTimes.count > 1 else { return }
+            selectedTimes.remove(time)
+        } else {
+            selectedTimes.insert(time)
+        }
+    }
+}
+
+private struct MedicationDaysEditor: View {
+    @Binding var selectedDays: Set<Weekday>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Schedule", systemImage: "calendar")
+                .font(.headline)
+                .foregroundStyle(.white)
+
+            Text("Select the days this medication is taken.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.68))
+
+            HStack(spacing: 7) {
+                ForEach(Weekday.allCases) { day in
+                    Button(day.shortName) {
+                        toggle(day)
+                    }
+                    .font(.caption.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .foregroundStyle(selectedDays.contains(day) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
+                    .background(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.1), in: Circle())
+                    .accessibilityLabel(day.accessibilityName)
+                    .accessibilityValue(selectedDays.contains(day) ? "Selected" : "Not selected")
+                }
+            }
+        }
+        .padding(18)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private func toggle(_ day: Weekday) {
+        if selectedDays.contains(day) {
+            guard selectedDays.count > 1 else { return }
+            selectedDays.remove(day)
+        } else {
+            selectedDays.insert(day)
+        }
+    }
+}
+
 private struct Medication: Identifiable, Codable, Equatable {
     let id: UUID
-    let name: String
-    let days: Set<Weekday>
-    let times: Set<DoseTime>
+    var name: String
+    var days: Set<Weekday>
+    var times: Set<DoseTime>
 
     var frequencyLabel: String {
         "\(times.count)x daily"
@@ -485,6 +771,18 @@ private enum Weekday: Int, CaseIterable, Identifiable, Hashable, Codable {
         case .thursday: "T"
         case .friday: "F"
         case .saturday: "S"
+        }
+    }
+
+    var accessibilityName: String {
+        switch self {
+        case .sunday: "Sunday"
+        case .monday: "Monday"
+        case .tuesday: "Tuesday"
+        case .wednesday: "Wednesday"
+        case .thursday: "Thursday"
+        case .friday: "Friday"
+        case .saturday: "Saturday"
         }
     }
 
