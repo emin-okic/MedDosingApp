@@ -44,6 +44,7 @@ struct ContentView: View {
             }
         }
         .tint(.mint)
+        .preferredColorScheme(.dark)
         .onChange(of: medications) { _, newValue in
             MedicationStore.save(newValue, key: "medications")
         }
@@ -56,6 +57,7 @@ struct ContentView: View {
                 onSave: updateMedication,
                 onDelete: deleteMedication
             )
+            .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $isShowingMedicationsList) {
             MedicationsManagementView(
@@ -64,6 +66,7 @@ struct ContentView: View {
                 onUpdateMedication: updateMedication,
                 onDeleteMedication: deleteMedication
             )
+            .preferredColorScheme(.dark)
         }
     }
 
@@ -73,9 +76,10 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Good \(timeOfDayGreeting)")
                         .font(.title2.weight(.semibold))
+                        .foregroundStyle(.white)
                     Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.85))
                 }
 
                 Spacer()
@@ -91,10 +95,10 @@ struct ContentView: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(.mint.opacity(0.16))
+                                .fill(.mint.opacity(0.18))
                                 .overlay(
                                     Circle()
-                                        .stroke(.mint.opacity(0.35), lineWidth: 1)
+                                        .stroke(.mint.opacity(0.4), lineWidth: 1.5)
                                 )
                         )
                         .scaleEffect(isShowingMedicationsList ? 0.96 : 1)
@@ -106,39 +110,44 @@ struct ContentView: View {
 
             Text("Your medicine, made simple.")
                 .font(.title.weight(.bold))
+                .foregroundStyle(.white)
         }
-        .foregroundStyle(.white)
     }
 
     private var progressCard: some View {
         HStack(spacing: 18) {
             ZStack {
                 Circle()
-                    .stroke(.white.opacity(0.14), lineWidth: 9)
+                    .stroke(.white.opacity(0.18), lineWidth: 9)
                 Circle()
                     .trim(from: 0, to: Double(adherencePercentage) / 100)
                     .stroke(.mint, style: StrokeStyle(lineWidth: 9, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Text("\(adherencePercentage)%")
                     .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
             }
             .frame(width: 74, height: 74)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Today’s progress")
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
                 Text(todaysDoses.isEmpty ? "Add a medication to get started" : "\(takenTodayCount) of \(todaysDoses.count) doses taken")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.68))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.88))
             }
 
             Spacer(minLength: 0)
         }
-        .foregroundStyle(.white)
         .padding(18)
         .background(
             LinearGradient(colors: [Color(red: 0.12, green: 0.25, blue: 0.28), Color(red: 0.08, green: 0.15, blue: 0.21)], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.white.opacity(0.12), lineWidth: 1)
         )
     }
 
@@ -151,14 +160,20 @@ struct ContentView: View {
             if todaysDoses.isEmpty {
                 ContentUnavailableView {
                     Label("Nothing scheduled today", systemImage: "sun.max")
+                        .font(.headline)
                         .foregroundStyle(.white)
                 } description: {
                     Text("Add a medication and choose the days you take it.")
-                        .foregroundStyle(.white.opacity(0.65))
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.85))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .padding(.vertical, 24)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(.white.opacity(0.08), lineWidth: 1)
+                )
             } else {
                 ForEach(todaysDoses) { dose in
                     doseRow(dose)
@@ -180,19 +195,20 @@ struct ContentView: View {
                     Image(systemName: dose.time.symbol)
                         .font(.headline)
                         .foregroundStyle(.mint)
-                        .frame(width: 42, height: 42)
-                        .background(.mint.opacity(0.14), in: Circle())
+                        .frame(width: 44, height: 44)
+                        .background(.mint.opacity(0.18), in: Circle())
+                        .overlay(Circle().stroke(.mint.opacity(0.3), lineWidth: 1))
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(dose.medication.name)
-                            .font(.headline)
+                            .font(.headline.weight(.semibold))
                             .foregroundStyle(.white)
                         Text("\(dose.time.title) · \(dose.time.displayTime)")
                             .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.65))
+                            .foregroundStyle(.white.opacity(0.85))
                         if let log {
                             Text("Taken \(log.takenAt.formatted(date: .omitted, time: .shortened))")
-                                .font(.caption.weight(.medium))
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(.mint)
                         }
                     }
@@ -206,15 +222,20 @@ struct ContentView: View {
                 toggleDose(dose)
             } label: {
                 Image(systemName: log == nil ? "checkmark" : "checkmark.circle.fill")
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
                     .frame(width: 44, height: 44)
-                    .background(log == nil ? Color.white.opacity(0.1) : Color.mint, in: Circle())
+                    .background(log == nil ? Color.white.opacity(0.15) : Color.mint, in: Circle())
                     .foregroundStyle(log == nil ? .white : Color(red: 0.04, green: 0.08, blue: 0.12))
+                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: log == nil ? 1 : 0))
             }
             .accessibilityLabel(log == nil ? "Mark \(dose.medication.name) \(dose.time.title) dose as taken" : "Undo \(dose.medication.name) \(dose.time.title) dose")
         }
         .padding(14)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var timeOfDayGreeting: String {
@@ -354,13 +375,14 @@ private struct MedicationsManagementView: View {
             }
             .navigationTitle("Medications")
             .navigationBarTitleDisplayMode(.large)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {
                         dismiss()
                     }
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.mint)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.white)
                 }
 
                 ToolbarItem(placement: .primaryAction) {
@@ -369,9 +391,9 @@ private struct MedicationsManagementView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.body.weight(.bold))
-                            .foregroundStyle(.mint)
+                            .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
                             .frame(width: 32, height: 32)
-                            .background(.mint.opacity(0.15), in: Circle())
+                            .background(Color.mint, in: Circle())
                     }
                     .accessibilityLabel("Add medication")
                 }
@@ -386,6 +408,7 @@ private struct MedicationsManagementView: View {
                         onDeleteMedication(deleted)
                     }
                 )
+                .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $isShowingAddMedication) {
                 AddMedicationSheet(
@@ -395,9 +418,11 @@ private struct MedicationsManagementView: View {
                 )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
             }
         }
         .tint(.mint)
+        .preferredColorScheme(.dark)
     }
 
     private var statsBanner: some View {
@@ -407,8 +432,8 @@ private struct MedicationsManagementView: View {
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
                 Text("\(totalDailyDoses) scheduled daily \(totalDailyDoses == 1 ? "dose" : "doses")")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.7))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.88))
             }
 
             Spacer()
@@ -417,7 +442,7 @@ private struct MedicationsManagementView: View {
                 .font(.title2)
                 .foregroundStyle(.mint)
                 .frame(width: 48, height: 48)
-                .background(.mint.opacity(0.18), in: Circle())
+                .background(.mint.opacity(0.2), in: Circle())
         }
         .padding(18)
         .background(
@@ -428,13 +453,17 @@ private struct MedicationsManagementView: View {
             ),
             in: RoundedRectangle(cornerRadius: 22, style: .continuous)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.12), lineWidth: 1)
+        )
     }
 
     private var emptyStateView: some View {
         VStack(spacing: 18) {
             ZStack {
                 Circle()
-                    .fill(.mint.opacity(0.12))
+                    .fill(.mint.opacity(0.15))
                     .frame(width: 88, height: 88)
                 Image(systemName: "pills.fill")
                     .font(.system(size: 38))
@@ -447,8 +476,8 @@ private struct MedicationsManagementView: View {
                     .font(.title2.weight(.bold))
                     .foregroundStyle(.white)
                 Text("Add your medications to receive reminders and easily track your daily doses.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.68))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
             }
@@ -457,7 +486,7 @@ private struct MedicationsManagementView: View {
                 isShowingAddMedication = true
             } label: {
                 Label("Add Your First Medication", systemImage: "plus")
-                    .font(.headline.weight(.semibold))
+                    .font(.headline.weight(.bold))
                     .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -468,21 +497,25 @@ private struct MedicationsManagementView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
-        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var noSearchResultsView: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.largeTitle)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.white.opacity(0.6))
                 .padding(.top, 24)
             Text("No results for \"\(searchText)\"")
-                .font(.headline)
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
             Text("Check the spelling or try searching for another medication.")
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.white.opacity(0.8))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
@@ -496,11 +529,11 @@ private struct MedicationsManagementView: View {
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(filteredMedications.count)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.mint)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 3)
-                    .background(.mint.opacity(0.16), in: Capsule())
+                    .background(Color.mint, in: Capsule())
             }
             .padding(.horizontal, 4)
 
@@ -511,18 +544,18 @@ private struct MedicationsManagementView: View {
             Button {
                 isShowingAddMedication = true
             } label: {
-                HStack {
+                HStack(spacing: 8) {
                     Image(systemName: "plus.circle.fill")
                     Text("Add another medication")
                 }
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(.mint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(.mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(.mint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(.mint.opacity(0.25), lineWidth: 1)
+                        .stroke(.mint.opacity(0.35), lineWidth: 1)
                 )
             }
             .padding(.top, 8)
@@ -539,7 +572,8 @@ private struct MedicationsManagementView: View {
                         .font(.title3)
                         .foregroundStyle(.mint)
                         .frame(width: 44, height: 44)
-                        .background(.mint.opacity(0.16), in: Circle())
+                        .background(.mint.opacity(0.18), in: Circle())
+                        .overlay(Circle().stroke(.mint.opacity(0.3), lineWidth: 1))
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(medication.name)
@@ -548,16 +582,16 @@ private struct MedicationsManagementView: View {
 
                         HStack(spacing: 8) {
                             Label(medication.frequencyLabel, systemImage: "clock")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white.opacity(0.7))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.85))
 
                             Text("•")
                                 .font(.caption)
-                                .foregroundStyle(.white.opacity(0.4))
+                                .foregroundStyle(.white.opacity(0.6))
 
                             Label(medication.daysLabel, systemImage: "calendar")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white.opacity(0.7))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.85))
                         }
                     }
 
@@ -565,15 +599,15 @@ private struct MedicationsManagementView: View {
 
                     HStack(spacing: 4) {
                         Text("Edit")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.mint)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(.mint.opacity(0.8))
+                            .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(.mint.opacity(0.12), in: Capsule())
+                    .background(Color.mint, in: Capsule())
                 }
 
                 HStack(spacing: 8) {
@@ -582,20 +616,20 @@ private struct MedicationsManagementView: View {
                             Image(systemName: time.symbol)
                                 .font(.caption2)
                             Text("\(time.title) (\(time.displayTime))")
-                                .font(.caption2.weight(.medium))
+                                .font(.caption2.weight(.semibold))
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(.white.opacity(0.08), in: Capsule())
-                        .foregroundStyle(.white.opacity(0.85))
+                        .background(.white.opacity(0.12), in: Capsule())
+                        .foregroundStyle(.white)
                     }
                 }
             }
             .padding(16)
-            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(.white.opacity(0.08), lineWidth: 1)
+                    .stroke(.white.opacity(0.1), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -642,37 +676,42 @@ private struct AddMedicationSheet: View {
                                 .font(.title2)
                                 .foregroundStyle(.mint)
                                 .frame(width: 52, height: 52)
-                                .background(.mint.opacity(0.16), in: Circle())
+                                .background(.mint.opacity(0.18), in: Circle())
+                                .overlay(Circle().stroke(.mint.opacity(0.3), lineWidth: 1))
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("New Medication")
                                     .font(.title3.weight(.bold))
                                     .foregroundStyle(.white)
                                 Text("Add to your daily schedule and reminders.")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.white.opacity(0.68))
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.white.opacity(0.85))
                             }
                         }
                         .padding(.bottom, 4)
 
                         VStack(alignment: .leading, spacing: 10) {
                             Label("Medication name", systemImage: "text.cursor")
-                                .font(.headline)
+                                .font(.headline.weight(.bold))
                                 .foregroundStyle(.white)
 
                             TextField("e.g. Lisinopril, Vitamin D3", text: $medicationName)
                                 .textInputAutocapitalization(.words)
                                 .padding(14)
-                                .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .foregroundStyle(.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(.white.opacity(0.15), lineWidth: 1)
+                                )
                                 .accessibilityLabel("Medication name")
                         }
                         .padding(18)
-                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
                         VStack(alignment: .leading, spacing: 14) {
                             Label("Daily frequency", systemImage: "repeat")
-                                .font(.headline)
+                                .font(.headline.weight(.bold))
                                 .foregroundStyle(.white)
 
                             Picker("Times per day", selection: $selectedFrequency) {
@@ -686,8 +725,8 @@ private struct AddMedicationSheet: View {
                             }
 
                             Text("Reminder times")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.8))
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.white.opacity(0.9))
                                 .padding(.top, 4)
 
                             HStack(spacing: 8) {
@@ -699,14 +738,18 @@ private struct AddMedicationSheet: View {
                                             Image(systemName: time.symbol)
                                                 .font(.headline)
                                             Text(time.title)
-                                                .font(.caption.weight(.semibold))
+                                                .font(.caption.weight(.bold))
                                             Text(time.displayTime)
-                                                .font(.caption2)
+                                                .font(.caption2.weight(.medium))
                                         }
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
                                         .foregroundStyle(selectedTimes.contains(time) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
-                                        .background(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .background(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                .stroke(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.15), lineWidth: 1)
+                                        )
                                     }
                                     .buttonStyle(.plain)
                                     .disabled(!selectedTimes.contains(time) && selectedTimes.count >= selectedFrequency)
@@ -716,16 +759,16 @@ private struct AddMedicationSheet: View {
                             }
                         }
                         .padding(18)
-                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
                         VStack(alignment: .leading, spacing: 14) {
                             Label("Days of the week", systemImage: "calendar")
-                                .font(.headline)
+                                .font(.headline.weight(.bold))
                                 .foregroundStyle(.white)
 
                             Text("Select the days you need to take this medication.")
-                                .font(.subheadline)
-                                .foregroundStyle(.white.opacity(0.68))
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.white.opacity(0.85))
 
                             HStack(spacing: 6) {
                                 ForEach(Weekday.allCases) { day in
@@ -740,26 +783,33 @@ private struct AddMedicationSheet: View {
                                     .font(.caption.weight(.bold))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 11)
-                                    .background(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.1), in: Circle())
+                                    .background(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.12), in: Circle())
                                     .foregroundStyle(selectedDays.contains(day) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.15), lineWidth: 1)
+                                    )
                                     .accessibilityLabel(day.accessibilityName)
                                     .accessibilityValue(selectedDays.contains(day) ? "Selected" : "Not selected")
                                 }
                             }
                         }
                         .padding(18)
-                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                     }
                     .padding(20)
                 }
             }
             .navigationTitle("Add Medication")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.9))
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
@@ -772,6 +822,8 @@ private struct AddMedicationSheet: View {
                         onSave(medication)
                         dismiss()
                     }
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.mint)
                     .disabled(medicationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedDays.isEmpty || selectedTimes.isEmpty)
                 }
             }
@@ -839,7 +891,7 @@ private struct MedicationEditorView: View {
                             isShowingDeleteConfirmation = true
                         } label: {
                             Label("Delete medication", systemImage: "trash")
-                                .font(.headline)
+                                .font(.headline.weight(.semibold))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                         }
@@ -850,13 +902,16 @@ private struct MedicationEditorView: View {
                     .padding(20)
                 }
             }
-            .navigationTitle("Edit medication")
+            .navigationTitle("Edit Medication")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.9))
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
@@ -871,6 +926,8 @@ private struct MedicationEditorView: View {
                         )
                         dismiss()
                     }
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.mint)
                     .disabled(!canSave)
                 }
             }
@@ -897,15 +954,16 @@ private struct MedicationEditorHeader: View {
                 .font(.title2)
                 .foregroundStyle(.mint)
                 .frame(width: 56, height: 56)
-                .background(.mint.opacity(0.16), in: Circle())
+                .background(.mint.opacity(0.18), in: Circle())
+                .overlay(Circle().stroke(.mint.opacity(0.3), lineWidth: 1))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Medication details")
                     .font(.title2.weight(.bold))
                     .foregroundStyle(.white)
                 Text("Keep your treatment plan up to date.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.68))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
             }
 
             Spacer(minLength: 0)
@@ -921,17 +979,21 @@ private struct MedicationNameEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Medication name", systemImage: "text.cursor")
-                .font(.headline)
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
             TextField("Medication name", text: $name)
                 .textInputAutocapitalization(.words)
                 .padding(14)
-                .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .foregroundStyle(.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(.white.opacity(0.15), lineWidth: 1)
+                )
         }
         .padding(18)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
@@ -941,12 +1003,12 @@ private struct MedicationScheduleEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Daily reminders", systemImage: "clock.fill")
-                .font(.headline)
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
             Text("Choose when you take this medication.")
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.68))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white.opacity(0.85))
 
             HStack(spacing: 10) {
                 ForEach(DoseTime.allCases) { time in
@@ -957,14 +1019,18 @@ private struct MedicationScheduleEditor: View {
                             Image(systemName: time.symbol)
                                 .font(.headline)
                             Text(time.title)
-                                .font(.caption.weight(.semibold))
+                                .font(.caption.weight(.bold))
                             Text(time.displayTime)
-                                .font(.caption2)
+                                .font(.caption2.weight(.medium))
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .foregroundStyle(selectedTimes.contains(time) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
-                        .background(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.15), lineWidth: 1)
+                        )
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(time.title), \(time.displayTime)")
@@ -973,7 +1039,7 @@ private struct MedicationScheduleEditor: View {
             }
         }
         .padding(18)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func toggle(_ time: DoseTime) {
@@ -992,12 +1058,12 @@ private struct MedicationDaysEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Schedule", systemImage: "calendar")
-                .font(.headline)
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
             Text("Select the days this medication is taken.")
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.68))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white.opacity(0.85))
 
             HStack(spacing: 7) {
                 ForEach(Weekday.allCases) { day in
@@ -1008,14 +1074,18 @@ private struct MedicationDaysEditor: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
                     .foregroundStyle(selectedDays.contains(day) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
-                    .background(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.1), in: Circle())
+                    .background(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.12), in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.15), lineWidth: 1)
+                    )
                     .accessibilityLabel(day.accessibilityName)
                     .accessibilityValue(selectedDays.contains(day) ? "Selected" : "Not selected")
                 }
             }
         }
         .padding(18)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func toggle(_ day: Weekday) {
