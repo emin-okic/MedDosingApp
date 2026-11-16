@@ -4,13 +4,9 @@ import UserNotifications
 struct ContentView: View {
     @State private var medications: [Medication] = MedicationStore.load([Medication].self, key: "medications")
     @State private var doseLogs: [DoseLog] = MedicationStore.load([DoseLog].self, key: "doseLogs")
-    @State private var isAddingMedication = false
-    @State private var medicationName = ""
-    @State private var selectedFrequency = 1
-    @State private var selectedDays = Set(Weekday.allCases)
-    @State private var selectedTimes: Set<DoseTime> = [.morning]
     @State private var notificationStatus = ""
     @State private var selectedMedication: Medication?
+    @State private var isShowingMedicationsList = false
 
     private var todaysDoses: [ScheduledDose] {
         let weekday = Weekday.today
@@ -42,14 +38,13 @@ struct ContentView: View {
                     header
                     progressCard
                     todaySection
-                    medicationSection
-                    addMedicationSection
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
         }
         .tint(.mint)
+        .preferredColorScheme(.dark)
         .onChange(of: medications) { _, newValue in
             MedicationStore.save(newValue, key: "medications")
         }
@@ -62,6 +57,16 @@ struct ContentView: View {
                 onSave: updateMedication,
                 onDelete: deleteMedication
             )
+            .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $isShowingMedicationsList) {
+            MedicationsManagementView(
+                medications: $medications,
+                onAddMedication: addMedication,
+                onUpdateMedication: updateMedication,
+                onDeleteMedication: deleteMedication
+            )
+            .preferredColorScheme(.dark)
         }
     }
 
@@ -69,57 +74,80 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Good (timeOfDayGreeting)")
+                    Text("Good \(timeOfDayGreeting)")
                         .font(.title2.weight(.semibold))
+                        .foregroundStyle(.white)
                     Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.85))
                 }
 
                 Spacer()
 
-                Image(systemName: "pills.fill")
-                    .font(.title2)
-                    .foregroundStyle(.mint)
-                    .frame(width: 48, height: 48)
-                    .background(.mint.opacity(0.16), in: Circle())
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        isShowingMedicationsList = true
+                    }
+                } label: {
+                    Image(systemName: "pills.fill")
+                        .font(.title2)
+                        .foregroundStyle(.mint)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(.mint.opacity(0.18))
+                                .overlay(
+                                    Circle()
+                                        .stroke(.mint.opacity(0.4), lineWidth: 1.5)
+                                )
+                        )
+                        .scaleEffect(isShowingMedicationsList ? 0.96 : 1)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isShowingMedicationsList)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Medications list")
             }
 
             Text("Your medicine, made simple.")
                 .font(.title.weight(.bold))
+                .foregroundStyle(.white)
         }
-        .foregroundStyle(.white)
     }
 
     private var progressCard: some View {
         HStack(spacing: 18) {
             ZStack {
                 Circle()
-                    .stroke(.white.opacity(0.14), lineWidth: 9)
+                    .stroke(.white.opacity(0.18), lineWidth: 9)
                 Circle()
                     .trim(from: 0, to: Double(adherencePercentage) / 100)
                     .stroke(.mint, style: StrokeStyle(lineWidth: 9, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Text("\(adherencePercentage)%")
                     .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
             }
             .frame(width: 74, height: 74)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Today’s progress")
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
                 Text(todaysDoses.isEmpty ? "Add a medication to get started" : "\(takenTodayCount) of \(todaysDoses.count) doses taken")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.68))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.88))
             }
 
             Spacer(minLength: 0)
         }
-        .foregroundStyle(.white)
         .padding(18)
         .background(
             LinearGradient(colors: [Color(red: 0.12, green: 0.25, blue: 0.28), Color(red: 0.08, green: 0.15, blue: 0.21)], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.white.opacity(0.12), lineWidth: 1)
         )
     }
 
@@ -132,14 +160,20 @@ struct ContentView: View {
             if todaysDoses.isEmpty {
                 ContentUnavailableView {
                     Label("Nothing scheduled today", systemImage: "sun.max")
+                        .font(.headline)
                         .foregroundStyle(.white)
                 } description: {
                     Text("Add a medication and choose the days you take it.")
-                        .foregroundStyle(.white.opacity(0.65))
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.85))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .padding(.vertical, 24)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(.white.opacity(0.08), lineWidth: 1)
+                )
             } else {
                 ForEach(todaysDoses) { dose in
                     doseRow(dose)
@@ -154,25 +188,33 @@ struct ContentView: View {
         }
 
         return HStack(spacing: 14) {
-            Image(systemName: dose.time.symbol)
-                .font(.headline)
-                .foregroundStyle(.mint)
-                .frame(width: 42, height: 42)
-                .background(.mint.opacity(0.14), in: Circle())
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(dose.medication.name)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Text("\(dose.time.title) · \(dose.time.displayTime)")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.65))
-                if let log {
-                    Text("Taken \(log.takenAt.formatted(date: .omitted, time: .shortened))")
-                        .font(.caption.weight(.medium))
+            Button {
+                selectedMedication = dose.medication
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: dose.time.symbol)
+                        .font(.headline)
                         .foregroundStyle(.mint)
+                        .frame(width: 44, height: 44)
+                        .background(.mint.opacity(0.18), in: Circle())
+                        .overlay(Circle().stroke(.mint.opacity(0.3), lineWidth: 1))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(dose.medication.name)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Text("\(dose.time.title) · \(dose.time.displayTime)")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.85))
+                        if let log {
+                            Text("Taken \(log.takenAt.formatted(date: .omitted, time: .shortened))")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.mint)
+                        }
+                    }
                 }
             }
+            .buttonStyle(.plain)
 
             Spacer(minLength: 0)
 
@@ -180,171 +222,20 @@ struct ContentView: View {
                 toggleDose(dose)
             } label: {
                 Image(systemName: log == nil ? "checkmark" : "checkmark.circle.fill")
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
                     .frame(width: 44, height: 44)
-                    .background(log == nil ? Color.white.opacity(0.1) : Color.mint, in: Circle())
+                    .background(log == nil ? Color.white.opacity(0.15) : Color.mint, in: Circle())
                     .foregroundStyle(log == nil ? .white : Color(red: 0.04, green: 0.08, blue: 0.12))
+                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: log == nil ? 1 : 0))
             }
             .accessibilityLabel(log == nil ? "Mark \(dose.medication.name) \(dose.time.title) dose as taken" : "Undo \(dose.medication.name) \(dose.time.title) dose")
         }
         .padding(14)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    private var medicationSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if !medications.isEmpty {
-                Text("Your medications")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-
-                ForEach(medications) { medication in
-                    Button {
-                        selectedMedication = medication
-                    } label: {
-                        HStack(spacing: 14) {
-                            Image(systemName: "pills.fill")
-                                .font(.headline)
-                                .foregroundStyle(.mint)
-                                .frame(width: 44, height: 44)
-                                .background(.mint.opacity(0.14), in: Circle())
-
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(medication.name)
-                                    .font(.headline)
-                                    .foregroundStyle(.white)
-                                Text("\(medication.frequencyLabel) · \(medication.daysLabel)")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.white.opacity(0.65))
-                            }
-
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 5) {
-                                Text("\(medication.times.count) reminder\(medication.times.count == 1 ? "" : "s")")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.mint)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.white.opacity(0.55))
-                            }
-                        }
-                        .padding(16)
-                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens medication settings")
-                }
-            }
-        }
-    }
-
-    private var addMedicationSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Button {
-                withAnimation(.snappy) {
-                    isAddingMedication.toggle()
-                }
-            } label: {
-                Label(isAddingMedication ? "Close medication form" : "Add medication", systemImage: isAddingMedication ? "xmark" : "plus")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.mint)
-            .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
-
-            if isAddingMedication {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("New medication")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(.white)
-
-                    TextField("Medication name", text: $medicationName)
-                        .padding(14)
-                        .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .foregroundStyle(.white)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Times per day")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.8))
-                        Picker("Times per day", selection: $selectedFrequency) {
-                            ForEach(1...3, id: \.self) { count in
-                                Text("\(count)").tag(count)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: selectedFrequency) { _, count in
-                            selectedTimes = Set(DoseTime.allCases.prefix(count))
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Reminder times")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.8))
-                        HStack(spacing: 8) {
-                            ForEach(DoseTime.allCases) { time in
-                                Button {
-                                    toggleTime(time)
-                                } label: {
-                                    VStack(spacing: 5) {
-                                        Image(systemName: time.symbol)
-                                        Text(time.title)
-                                            .font(.caption.weight(.semibold))
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(selectedTimes.contains(time) ? .mint : .white.opacity(0.5))
-                                .disabled(!selectedTimes.contains(time) && selectedTimes.count >= selectedFrequency)
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Take on")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.8))
-                        HStack(spacing: 6) {
-                            ForEach(Weekday.allCases) { day in
-                                Button(day.shortName) {
-                                    if selectedDays.contains(day) {
-                                        selectedDays.remove(day)
-                                    } else {
-                                        selectedDays.insert(day)
-                                    }
-                                }
-                                .font(.caption.weight(.bold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.1), in: Circle())
-                                .foregroundStyle(selectedDays.contains(day) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
-                            }
-                        }
-                    }
-
-                    Button("Save medication") {
-                        saveMedication()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.white)
-                    .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
-                    .disabled(medicationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedDays.isEmpty || selectedTimes.isEmpty)
-
-                    if !notificationStatus.isEmpty {
-                        Text(notificationStatus)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                }
-                .padding(18)
-                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            }
-        }
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var timeOfDayGreeting: String {
@@ -352,15 +243,6 @@ struct ContentView: View {
         case 5..<12: "morning"
         case 12..<17: "afternoon"
         default: "evening"
-        }
-    }
-
-    private func toggleTime(_ time: DoseTime) {
-        if selectedTimes.contains(time) {
-            guard selectedTimes.count > 1 else { return }
-            selectedTimes.remove(time)
-        } else if selectedTimes.count < selectedFrequency {
-            selectedTimes.insert(time)
         }
     }
 
@@ -374,17 +256,8 @@ struct ContentView: View {
         }
     }
 
-    private func saveMedication() {
-        let medication = Medication(
-            id: UUID(),
-            name: medicationName.trimmingCharacters(in: .whitespacesAndNewlines),
-            days: selectedDays,
-            times: selectedTimes
-        )
+    private func addMedication(_ medication: Medication) {
         medications.append(medication)
-        medicationName = ""
-        isAddingMedication = false
-
         Task {
             await scheduleNotifications(for: medication)
         }
@@ -452,6 +325,524 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Modern Medication Management View
+
+private struct MedicationsManagementView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var medications: [Medication]
+    let onAddMedication: (Medication) -> Void
+    let onUpdateMedication: (Medication) -> Void
+    let onDeleteMedication: (Medication) -> Void
+
+    @State private var searchText = ""
+    @State private var selectedMedicationToEdit: Medication?
+    @State private var isShowingAddMedication = false
+
+    private var filteredMedications: [Medication] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return medications }
+        return medications.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    private var totalDailyDoses: Int {
+        medications.reduce(0) { $0 + $1.times.count }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(red: 0.04, green: 0.08, blue: 0.12)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if !medications.isEmpty {
+                            statsBanner
+                        }
+
+                        if medications.isEmpty {
+                            emptyStateView
+                        } else if filteredMedications.isEmpty {
+                            noSearchResultsView
+                        } else {
+                            medicationsList
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                }
+                .searchable(text: $searchText, prompt: "Search medications")
+            }
+            .navigationTitle("Medications")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.white)
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        isShowingAddMedication = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.body.weight(.bold))
+                            .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
+                            .frame(width: 32, height: 32)
+                            .background(Color.mint, in: Circle())
+                    }
+                    .accessibilityLabel("Add medication")
+                }
+            }
+            .sheet(item: $selectedMedicationToEdit) { medication in
+                MedicationEditorView(
+                    medication: medication,
+                    onSave: { updated in
+                        onUpdateMedication(updated)
+                    },
+                    onDelete: { deleted in
+                        onDeleteMedication(deleted)
+                    }
+                )
+                .preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $isShowingAddMedication) {
+                AddMedicationSheet(
+                    onSave: { newMed in
+                        onAddMedication(newMed)
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
+            }
+        }
+        .tint(.mint)
+        .preferredColorScheme(.dark)
+    }
+
+    private var statsBanner: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(medications.count) Active \(medications.count == 1 ? "Medication" : "Medications")")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("\(totalDailyDoses) scheduled daily \(totalDailyDoses == 1 ? "dose" : "doses")")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.88))
+            }
+
+            Spacer()
+
+            Image(systemName: "cross.vial.fill")
+                .font(.title2)
+                .foregroundStyle(.mint)
+                .frame(width: 48, height: 48)
+                .background(.mint.opacity(0.2), in: Circle())
+        }
+        .padding(18)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.12, green: 0.25, blue: 0.28), Color(red: 0.08, green: 0.15, blue: 0.21)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(.mint.opacity(0.15))
+                    .frame(width: 88, height: 88)
+                Image(systemName: "pills.fill")
+                    .font(.system(size: 38))
+                    .foregroundStyle(.mint)
+            }
+            .padding(.top, 40)
+
+            VStack(spacing: 6) {
+                Text("No Medications Yet")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("Add your medications to receive reminders and easily track your daily doses.")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            Button {
+                isShowingAddMedication = true
+            } label: {
+                Label("Add Your First Medication", systemImage: "plus")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.mint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private var noSearchResultsView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.largeTitle)
+                .foregroundStyle(.white.opacity(0.6))
+                .padding(.top, 24)
+            Text("No results for \"\(searchText)\"")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+            Text("Check the spelling or try searching for another medication.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.8))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+
+    private var medicationsList: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("All Medications")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("\(filteredMedications.count)")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(Color.mint, in: Capsule())
+            }
+            .padding(.horizontal, 4)
+
+            ForEach(filteredMedications) { medication in
+                medicationCard(medication)
+            }
+
+            Button {
+                isShowingAddMedication = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Add another medication")
+                }
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.mint)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(.mint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(.mint.opacity(0.35), lineWidth: 1)
+                )
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    private func medicationCard(_ medication: Medication) -> some View {
+        Button {
+            selectedMedicationToEdit = medication
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: "pill.fill")
+                        .font(.title3)
+                        .foregroundStyle(.mint)
+                        .frame(width: 44, height: 44)
+                        .background(.mint.opacity(0.18), in: Circle())
+                        .overlay(Circle().stroke(.mint.opacity(0.3), lineWidth: 1))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(medication.name)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.white)
+
+                        HStack(spacing: 8) {
+                            Label(medication.frequencyLabel, systemImage: "clock")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+
+                            Text("•")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.6))
+
+                            Label(medication.daysLabel, systemImage: "calendar")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+
+                    HStack(spacing: 4) {
+                        Text("Edit")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color(red: 0.04, green: 0.08, blue: 0.12))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.mint, in: Capsule())
+                }
+
+                HStack(spacing: 8) {
+                    ForEach(DoseTime.allCases.filter { medication.times.contains($0) }) { time in
+                        HStack(spacing: 5) {
+                            Image(systemName: time.symbol)
+                                .font(.caption2)
+                            Text("\(time.title) (\(time.displayTime))")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(.white.opacity(0.12), in: Capsule())
+                        .foregroundStyle(.white)
+                    }
+                }
+            }
+            .padding(16)
+            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(.white.opacity(0.1), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                selectedMedicationToEdit = medication
+            } label: {
+                Label("Edit Medication", systemImage: "pencil")
+            }
+
+            Button(role: .destructive) {
+                onDeleteMedication(medication)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .accessibilityLabel("\(medication.name), \(medication.frequencyLabel), \(medication.daysLabel)")
+        .accessibilityHint("Double tap to edit medication details")
+    }
+}
+
+// MARK: - Add Medication Sheet
+
+private struct AddMedicationSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let onSave: (Medication) -> Void
+
+    @State private var medicationName = ""
+    @State private var selectedFrequency = 1
+    @State private var selectedDays = Set(Weekday.allCases)
+    @State private var selectedTimes: Set<DoseTime> = [.morning]
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(red: 0.04, green: 0.08, blue: 0.12)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        HStack(spacing: 14) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.mint)
+                                .frame(width: 52, height: 52)
+                                .background(.mint.opacity(0.18), in: Circle())
+                                .overlay(Circle().stroke(.mint.opacity(0.3), lineWidth: 1))
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("New Medication")
+                                    .font(.title3.weight(.bold))
+                                    .foregroundStyle(.white)
+                                Text("Add to your daily schedule and reminders.")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.white.opacity(0.85))
+                            }
+                        }
+                        .padding(.bottom, 4)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Label("Medication name", systemImage: "text.cursor")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(.white)
+
+                            TextField("e.g. Lisinopril, Vitamin D3", text: $medicationName)
+                                .textInputAutocapitalization(.words)
+                                .padding(14)
+                                .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .foregroundStyle(.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(.white.opacity(0.15), lineWidth: 1)
+                                )
+                                .accessibilityLabel("Medication name")
+                        }
+                        .padding(18)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 14) {
+                            Label("Daily frequency", systemImage: "repeat")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(.white)
+
+                            Picker("Times per day", selection: $selectedFrequency) {
+                                ForEach(1...3, id: \.self) { count in
+                                    Text("\(count)x daily").tag(count)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .onChange(of: selectedFrequency) { _, count in
+                                selectedTimes = Set(DoseTime.allCases.prefix(count))
+                            }
+
+                            Text("Reminder times")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .padding(.top, 4)
+
+                            HStack(spacing: 8) {
+                                ForEach(DoseTime.allCases) { time in
+                                    Button {
+                                        toggleTime(time)
+                                    } label: {
+                                        VStack(spacing: 5) {
+                                            Image(systemName: time.symbol)
+                                                .font(.headline)
+                                            Text(time.title)
+                                                .font(.caption.weight(.bold))
+                                            Text(time.displayTime)
+                                                .font(.caption2.weight(.medium))
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .foregroundStyle(selectedTimes.contains(time) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
+                                        .background(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                .stroke(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.15), lineWidth: 1)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!selectedTimes.contains(time) && selectedTimes.count >= selectedFrequency)
+                                    .accessibilityLabel("\(time.title) reminder time")
+                                    .accessibilityValue(selectedTimes.contains(time) ? "Selected" : "Not selected")
+                                }
+                            }
+                        }
+                        .padding(18)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 14) {
+                            Label("Days of the week", systemImage: "calendar")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(.white)
+
+                            Text("Select the days you need to take this medication.")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.white.opacity(0.85))
+
+                            HStack(spacing: 6) {
+                                ForEach(Weekday.allCases) { day in
+                                    Button(day.shortName) {
+                                        if selectedDays.contains(day) {
+                                            guard selectedDays.count > 1 else { return }
+                                            selectedDays.remove(day)
+                                        } else {
+                                            selectedDays.insert(day)
+                                        }
+                                    }
+                                    .font(.caption.weight(.bold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 11)
+                                    .background(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.12), in: Circle())
+                                    .foregroundStyle(selectedDays.contains(day) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.15), lineWidth: 1)
+                                    )
+                                    .accessibilityLabel(day.accessibilityName)
+                                    .accessibilityValue(selectedDays.contains(day) ? "Selected" : "Not selected")
+                                }
+                            }
+                        }
+                        .padding(18)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Add Medication")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let medication = Medication(
+                            id: UUID(),
+                            name: medicationName.trimmingCharacters(in: .whitespacesAndNewlines),
+                            days: selectedDays,
+                            times: selectedTimes
+                        )
+                        onSave(medication)
+                        dismiss()
+                    }
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.mint)
+                    .disabled(medicationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedDays.isEmpty || selectedTimes.isEmpty)
+                }
+            }
+            .tint(.mint)
+        }
+    }
+
+    private func toggleTime(_ time: DoseTime) {
+        if selectedTimes.contains(time) {
+            guard selectedTimes.count > 1 else { return }
+            selectedTimes.remove(time)
+        } else if selectedTimes.count < selectedFrequency {
+            selectedTimes.insert(time)
+        }
+    }
+}
+
+// MARK: - Medication Editor View
+
 private struct MedicationEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -500,7 +891,7 @@ private struct MedicationEditorView: View {
                             isShowingDeleteConfirmation = true
                         } label: {
                             Label("Delete medication", systemImage: "trash")
-                                .font(.headline)
+                                .font(.headline.weight(.semibold))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                         }
@@ -511,13 +902,16 @@ private struct MedicationEditorView: View {
                     .padding(20)
                 }
             }
-            .navigationTitle("Edit medication")
+            .navigationTitle("Edit Medication")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.9))
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
@@ -532,6 +926,8 @@ private struct MedicationEditorView: View {
                         )
                         dismiss()
                     }
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.mint)
                     .disabled(!canSave)
                 }
             }
@@ -558,15 +954,16 @@ private struct MedicationEditorHeader: View {
                 .font(.title2)
                 .foregroundStyle(.mint)
                 .frame(width: 56, height: 56)
-                .background(.mint.opacity(0.16), in: Circle())
+                .background(.mint.opacity(0.18), in: Circle())
+                .overlay(Circle().stroke(.mint.opacity(0.3), lineWidth: 1))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Medication details")
                     .font(.title2.weight(.bold))
                     .foregroundStyle(.white)
                 Text("Keep your treatment plan up to date.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.68))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
             }
 
             Spacer(minLength: 0)
@@ -582,17 +979,21 @@ private struct MedicationNameEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Medication name", systemImage: "text.cursor")
-                .font(.headline)
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
             TextField("Medication name", text: $name)
                 .textInputAutocapitalization(.words)
                 .padding(14)
-                .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .foregroundStyle(.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(.white.opacity(0.15), lineWidth: 1)
+                )
         }
         .padding(18)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
@@ -602,12 +1003,12 @@ private struct MedicationScheduleEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Daily reminders", systemImage: "clock.fill")
-                .font(.headline)
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
             Text("Choose when you take this medication.")
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.68))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white.opacity(0.85))
 
             HStack(spacing: 10) {
                 ForEach(DoseTime.allCases) { time in
@@ -618,14 +1019,18 @@ private struct MedicationScheduleEditor: View {
                             Image(systemName: time.symbol)
                                 .font(.headline)
                             Text(time.title)
-                                .font(.caption.weight(.semibold))
+                                .font(.caption.weight(.bold))
                             Text(time.displayTime)
-                                .font(.caption2)
+                                .font(.caption2.weight(.medium))
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .foregroundStyle(selectedTimes.contains(time) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
-                        .background(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(selectedTimes.contains(time) ? Color.mint : Color.white.opacity(0.15), lineWidth: 1)
+                        )
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(time.title), \(time.displayTime)")
@@ -634,7 +1039,7 @@ private struct MedicationScheduleEditor: View {
             }
         }
         .padding(18)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func toggle(_ time: DoseTime) {
@@ -653,12 +1058,12 @@ private struct MedicationDaysEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Schedule", systemImage: "calendar")
-                .font(.headline)
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
             Text("Select the days this medication is taken.")
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.68))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white.opacity(0.85))
 
             HStack(spacing: 7) {
                 ForEach(Weekday.allCases) { day in
@@ -669,14 +1074,18 @@ private struct MedicationDaysEditor: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
                     .foregroundStyle(selectedDays.contains(day) ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
-                    .background(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.1), in: Circle())
+                    .background(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.12), in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(selectedDays.contains(day) ? Color.mint : Color.white.opacity(0.15), lineWidth: 1)
+                    )
                     .accessibilityLabel(day.accessibilityName)
                     .accessibilityValue(selectedDays.contains(day) ? "Selected" : "Not selected")
                 }
             }
         }
         .padding(18)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func toggle(_ day: Weekday) {
@@ -689,7 +1098,9 @@ private struct MedicationDaysEditor: View {
     }
 }
 
-private struct Medication: Identifiable, Codable, Equatable {
+// MARK: - Models and Persistence
+
+private struct Medication: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
     var name: String
     var days: Set<Weekday>
