@@ -1,15 +1,25 @@
 import SwiftUI
 import UserNotifications
 
+enum DayAdherenceStatus {
+    case noneScheduled
+    case complete
+    case partial
+    case noneTaken
+    case upcoming
+}
+
 struct ContentView: View {
     @State private var medications: [Medication] = MedicationStore.load([Medication].self, key: "medications")
     @State private var doseLogs: [DoseLog] = MedicationStore.load([DoseLog].self, key: "doseLogs")
     @State private var notificationStatus = ""
     @State private var selectedMedication: Medication?
     @State private var isShowingMedicationsList = false
+    @State private var selectedDate: Date = Calendar.current.startOfDay(for: .now)
+    @State private var isShowingMonthPicker = false
 
-    private var todaysDoses: [ScheduledDose] {
-        let weekday = Weekday.today
+    private var selectedDayDoses: [ScheduledDose] {
+        let weekday = Weekday.from(date: selectedDate)
         return medications.flatMap { medication in
             guard medication.days.contains(weekday) else { return [ScheduledDose]() }
             return medication.times.map { ScheduledDose(medication: medication, time: $0) }
@@ -17,15 +27,70 @@ struct ContentView: View {
         .sorted { $0.time.sortOrder < $1.time.sortOrder }
     }
 
-    private var takenTodayCount: Int {
-        todaysDoses.filter { dose in
-            doseLogs.contains { $0.medicationID == dose.medication.id && $0.doseTime == dose.time && Calendar.current.isDateInToday($0.takenAt) }
+    private var takenForSelectedDateCount: Int {
+        selectedDayDoses.filter { dose in
+            doseLogs.contains {
+                $0.medicationID == dose.medication.id &&
+                $0.doseTime == dose.time &&
+                Calendar.current.isDate($0.takenAt, inSameDayAs: selectedDate)
+            }
         }.count
     }
 
     private var adherencePercentage: Int {
-        guard !todaysDoses.isEmpty else { return 0 }
-        return Int((Double(takenTodayCount) / Double(todaysDoses.count) * 100).rounded())
+        guard !selectedDayDoses.isEmpty else { return 0 }
+        return Int((Double(takenForSelectedDateCount) / Double(selectedDayDoses.count) * 100).rounded())
+    }
+
+    private var daysInSelectedMonth: [Date] {
+        let calendar = Calendar.current
+        guard let monthInterval = calendar.dateInterval(of: .month, for: selectedDate) else { return [] }
+        var dates: [Date] = []
+        var currentDate = monthInterval.start
+        while currentDate < monthInterval.end {
+            dates.append(currentDate)
+            guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
+            currentDate = nextDate
+        }
+        return dates
+    }
+
+    private var monthlyAdherenceData: (percentage: Int, subtitle: String) {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: selectedDate)
+        let month = calendar.component(.month, from: selectedDate)
+
+        guard let startOfMonth = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
+              let range = calendar.range(of: .day, in: .month, for: startOfMonth) else {
+            return (0, "No data available")
+        }
+
+        let logsInMonth = doseLogs.filter {
+            let comp = calendar.dateComponents([.year, .month], from: $0.takenAt)
+            return comp.year == year && comp.month == month
+        }
+
+        let startOfToday = calendar.startOfDay(for: .now)
+        var totalScheduled = 0
+
+        for day in range {
+            guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { continue }
+            let isFutureMonth = startOfMonth > startOfToday
+            if !isFutureMonth && calendar.startOfDay(for: date) > startOfToday {
+                continue
+            }
+            let weekday = Weekday.from(date: date)
+            let dailyScheduled = medications.filter { $0.days.contains(weekday) }.reduce(0) { $0 + $1.times.count }
+            totalScheduled += dailyScheduled
+        }
+
+        guard totalScheduled > 0 else {
+            return (0, "No doses scheduled this month")
+        }
+
+        let pct = min(100, Int((Double(logsInMonth.count) / Double(totalScheduled) * 100).rounded()))
+        let subtitle = "\(logsInMonth.count) of \(totalScheduled) doses logged"
+        return (pct, subtitle)
     }
 
     var body: some View {
@@ -34,10 +99,12 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 18) {
                     header
+                    dateNavigator
+                    monthlyAdherenceBanner
                     progressCard
-                    todaySection
+                    scheduleSection
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
@@ -68,18 +135,46 @@ struct ContentView: View {
             )
             .preferredColorScheme(.dark)
         }
+        .sheet(isPresented: $isShowingMonthPicker) {
+            MonthYearPickerSheet(
+                selectedDate: $selectedDate,
+                doseLogs: doseLogs,
+                medications: medications
+            )
+            .preferredColorScheme(.dark)
+        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Good \(timeOfDayGreeting)")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.white)
-                    Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.85))
+                    if Calendar.current.isDateInToday(selectedDate) {
+                        Text("Good \(timeOfDayGreeting)")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.85))
+                    } else {
+                        HStack(spacing: 6) {
+                            Text(selectedDate.formatted(.dateTime.weekday(.wide)))
+                                .font(.title2.weight(.semibold))
+                                .foregroundStyle(.white)
+                            if Calendar.current.isDateInYesterday(selectedDate) {
+                                Text("(Yesterday)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.mint)
+                            } else if Calendar.current.isDateInTomorrow(selectedDate) {
+                                Text("(Tomorrow)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.mint)
+                            }
+                        }
+                        Text(selectedDate.formatted(.dateTime.month(.wide).day().year()))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
                 }
 
                 Spacer()
@@ -110,6 +205,208 @@ struct ContentView: View {
         }
     }
 
+    private var dateNavigator: some View {
+        VStack(spacing: 12) {
+            // Month & Year Header (EveryDollar style)
+            HStack {
+                Button {
+                    changeMonth(by: -1)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(.mint)
+                        .frame(width: 36, height: 36)
+                        .background(.white.opacity(0.08), in: Circle())
+                }
+                .accessibilityLabel("Previous month")
+
+                Spacer()
+
+                Button {
+                    isShowingMonthPicker = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar")
+                            .font(.subheadline)
+                            .foregroundStyle(.mint)
+                        Text(selectedDate.formatted(.dateTime.month(.wide).year()))
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.mint)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.white.opacity(0.08), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(.white.opacity(0.12), lineWidth: 1)
+                    )
+                }
+                .accessibilityLabel("Switch month and year, currently \(selectedDate.formatted(.dateTime.month(.wide).year()))")
+
+                Spacer()
+
+                Button {
+                    changeMonth(by: 1)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(.mint)
+                        .frame(width: 36, height: 36)
+                        .background(.white.opacity(0.08), in: Circle())
+                }
+                .accessibilityLabel("Next month")
+            }
+
+            // Day Stepper & Horizontal Day Strip
+            HStack(spacing: 8) {
+                Button {
+                    changeDay(by: -1)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 28, height: 60)
+                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .accessibilityLabel("Previous day")
+
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(daysInSelectedMonth, id: \.self) { date in
+                                let isSelected = Calendar.current.isDate(date, inSameDayAs: selectedDate)
+                                let isToday = Calendar.current.isDateInToday(date)
+                                let status = adherenceStatus(for: date)
+
+                                Button {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        selectedDate = Calendar.current.startOfDay(for: date)
+                                    }
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        Text(date.formatted(.dateTime.weekday(.narrow)))
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundStyle(isSelected ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white.opacity(0.6))
+
+                                        Text(date.formatted(.dateTime.day()))
+                                            .font(.system(size: 15, weight: isSelected ? .bold : .semibold))
+                                            .foregroundStyle(isSelected ? Color(red: 0.04, green: 0.08, blue: 0.12) : .white)
+
+                                        Circle()
+                                            .fill(statusColor(for: status, isSelected: isSelected))
+                                            .frame(width: 5, height: 5)
+                                            .opacity(status == .noneScheduled ? 0 : 1)
+                                    }
+                                    .frame(width: 42, height: 60)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .fill(isSelected ? Color.mint : (isToday ? Color.white.opacity(0.12) : Color.white.opacity(0.05)))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(isToday && !isSelected ? Color.mint.opacity(0.6) : Color.white.opacity(0.06), lineWidth: isToday && !isSelected ? 1.5 : 1)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .id(Calendar.current.startOfDay(for: date))
+                                .accessibilityLabel("\(date.formatted(.dateTime.weekday(.wide).month().day())), \(isSelected ? "Selected" : "")")
+                            }
+                        }
+                        .padding(.horizontal, 2)
+                    }
+                    .onAppear {
+                        proxy.scrollTo(Calendar.current.startOfDay(for: selectedDate), anchor: .center)
+                    }
+                    .onChange(of: selectedDate) { _, newDate in
+                        withAnimation {
+                            proxy.scrollTo(Calendar.current.startOfDay(for: newDate), anchor: .center)
+                        }
+                    }
+                }
+
+                Button {
+                    changeDay(by: 1)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 28, height: 60)
+                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .accessibilityLabel("Next day")
+            }
+        }
+        .padding(14)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private var monthlyAdherenceBanner: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .stroke(.white.opacity(0.12), lineWidth: 3.5)
+                    .frame(width: 32, height: 32)
+
+                Circle()
+                    .trim(from: 0, to: CGFloat(monthlyAdherenceData.percentage) / 100)
+                    .stroke(Color.mint, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 32, height: 32)
+
+                Text("\(monthlyAdherenceData.percentage)%")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(selectedDate.formatted(.dateTime.month(.wide))) Adherence")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+
+                Text(monthlyAdherenceData.subtitle)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+
+            Spacer()
+
+            if !Calendar.current.isDateInToday(selectedDate) {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        selectedDate = Calendar.current.startOfDay(for: .now)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.caption2.weight(.bold))
+                        Text("Today")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.mint.opacity(0.2), in: Capsule())
+                    .overlay(Capsule().stroke(Color.mint.opacity(0.4), lineWidth: 1))
+                    .foregroundStyle(Color.mint)
+                }
+                .accessibilityLabel("Jump back to today")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
     private var progressCard: some View {
         HStack(spacing: 20) {
             ZStack {
@@ -138,11 +435,11 @@ struct ContentView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Today's Progress")
+                Text(progressCardTitle)
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
 
-                Text("\(takenTodayCount) of \(todaysDoses.count) doses logged")
+                Text("\(takenForSelectedDateCount) of \(selectedDayDoses.count) doses logged")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white.opacity(0.9))
 
@@ -161,26 +458,53 @@ struct ContentView: View {
         )
     }
 
+    private var progressCardTitle: String {
+        if Calendar.current.isDateInToday(selectedDate) {
+            return "Today's Progress"
+        } else if Calendar.current.isDateInYesterday(selectedDate) {
+            return "Yesterday's Progress"
+        } else if Calendar.current.isDateInTomorrow(selectedDate) {
+            return "Tomorrow's Progress"
+        } else {
+            return "\(selectedDate.formatted(.dateTime.month(.abbreviated).day())) Progress"
+        }
+    }
 
-    private var todaySection: some View {
+    private var progressEncouragement: String {
+        if selectedDayDoses.isEmpty { return "No doses scheduled for this day" }
+        if takenForSelectedDateCount == selectedDayDoses.count {
+            return Calendar.current.isDateInToday(selectedDate) ? "All done for today! Great job." : "All doses logged for this day!"
+        }
+        let remaining = selectedDayDoses.count - takenForSelectedDateCount
+        let isPast = Calendar.current.startOfDay(for: selectedDate) < Calendar.current.startOfDay(for: .now)
+        if isPast {
+            return "\(remaining) \(remaining == 1 ? "dose was" : "doses were") missed or not logged"
+        } else if Calendar.current.isDateInToday(selectedDate) {
+            return "\(remaining) remaining today"
+        } else {
+            return "\(remaining) scheduled for this day"
+        }
+    }
+
+    private var scheduleSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("Today's Schedule")
+                Text(scheduleSectionTitle)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Text(Weekday.today.accessibilityName)
+                Text(Weekday.from(date: selectedDate).accessibilityName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.mint)
             }
 
-            if todaysDoses.isEmpty {
+            if selectedDayDoses.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "calendar.badge.clock")
                         .font(.system(size: 38))
                         .foregroundStyle(.mint)
                         .padding(.top, 16)
-                    Text("No doses scheduled for today")
+                    Text("No doses scheduled for this day")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(.white)
                     Text("Tap 'Meds' above to manage your schedule and days.")
@@ -191,10 +515,22 @@ struct ContentView: View {
                 .padding(.vertical, 28)
                 .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             } else {
-                ForEach(todaysDoses) { dose in
+                ForEach(selectedDayDoses) { dose in
                     doseRow(dose)
                 }
             }
+        }
+    }
+
+    private var scheduleSectionTitle: String {
+        if Calendar.current.isDateInToday(selectedDate) {
+            return "Today's Schedule"
+        } else if Calendar.current.isDateInYesterday(selectedDate) {
+            return "Yesterday's Schedule"
+        } else if Calendar.current.isDateInTomorrow(selectedDate) {
+            return "Tomorrow's Schedule"
+        } else {
+            return "\(selectedDate.formatted(.dateTime.month(.abbreviated).day())) Schedule"
         }
     }
 
@@ -202,7 +538,7 @@ struct ContentView: View {
         let isTaken = doseLogs.contains {
             $0.medicationID == dose.medication.id &&
             $0.doseTime == dose.time &&
-            Calendar.current.isDateInToday($0.takenAt)
+            Calendar.current.isDate($0.takenAt, inSameDayAs: selectedDate)
         }
 
         return Button {
@@ -287,29 +623,90 @@ struct ContentView: View {
         }
     }
 
-    private var progressEncouragement: String {
-        if todaysDoses.isEmpty { return "No doses needed today" }
-        if takenTodayCount == todaysDoses.count { return "All done for today! Great job." }
-        return "\(todaysDoses.count - takenTodayCount) remaining today"
-    }
-
     private func toggleDose(_ dose: ScheduledDose, currentlyTaken: Bool) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             if currentlyTaken {
                 doseLogs.removeAll {
                     $0.medicationID == dose.medication.id &&
                     $0.doseTime == dose.time &&
-                    Calendar.current.isDateInToday($0.takenAt)
+                    Calendar.current.isDate($0.takenAt, inSameDayAs: selectedDate)
                 }
             } else {
+                let takenDate: Date
+                if Calendar.current.isDateInToday(selectedDate) {
+                    takenDate = Date.now
+                } else {
+                    var components = Calendar.current.dateComponents([.year, .month, .day], from: selectedDate)
+                    components.hour = dose.time.hour
+                    components.minute = dose.time.minute
+                    takenDate = Calendar.current.date(from: components) ?? selectedDate
+                }
+
                 doseLogs.append(
                     DoseLog(
                         id: UUID(),
                         medicationID: dose.medication.id,
                         doseTime: dose.time,
-                        takenAt: Date.now
+                        takenAt: takenDate
                     )
                 )
+            }
+        }
+    }
+
+    private func changeMonth(by offset: Int) {
+        let calendar = Calendar.current
+        guard let newDate = calendar.date(byAdding: .month, value: offset, to: selectedDate) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedDate = calendar.startOfDay(for: newDate)
+        }
+    }
+
+    private func changeDay(by offset: Int) {
+        let calendar = Calendar.current
+        guard let newDate = calendar.date(byAdding: .day, value: offset, to: selectedDate) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedDate = calendar.startOfDay(for: newDate)
+        }
+    }
+
+    private func adherenceStatus(for date: Date) -> DayAdherenceStatus {
+        let weekday = Weekday.from(date: date)
+        let scheduledDosesForDay = medications.filter { $0.days.contains(weekday) }.reduce(0) { $0 + $1.times.count }
+        guard scheduledDosesForDay > 0 else { return .noneScheduled }
+
+        let takenCount = doseLogs.filter { Calendar.current.isDate($0.takenAt, inSameDayAs: date) }.count
+
+        if takenCount >= scheduledDosesForDay {
+            return .complete
+        } else if takenCount > 0 {
+            return .partial
+        } else {
+            let startOfToday = Calendar.current.startOfDay(for: .now)
+            let startOfTarget = Calendar.current.startOfDay(for: date)
+            if startOfTarget > startOfToday {
+                return .upcoming
+            } else {
+                return .noneTaken
+            }
+        }
+    }
+
+    private func statusColor(for status: DayAdherenceStatus, isSelected: Bool) -> Color {
+        if isSelected {
+            switch status {
+            case .complete: return Color(red: 0.04, green: 0.08, blue: 0.12)
+            case .partial: return Color(red: 0.85, green: 0.45, blue: 0.1)
+            case .noneTaken: return Color(red: 0.75, green: 0.15, blue: 0.15)
+            case .upcoming, .noneScheduled: return Color(red: 0.04, green: 0.08, blue: 0.12).opacity(0.4)
+            }
+        } else {
+            switch status {
+            case .complete: return Color.mint
+            case .partial: return Color.orange
+            case .noneTaken: return Color.red.opacity(0.85)
+            case .upcoming: return Color.white.opacity(0.3)
+            case .noneScheduled: return Color.clear
             }
         }
     }
@@ -1610,6 +2007,10 @@ enum Weekday: Int, CaseIterable, Identifiable, Hashable, Codable {
 
     static var today: Weekday {
         Weekday(rawValue: Calendar.current.component(.weekday, from: .now)) ?? .monday
+    }
+
+    static func from(date: Date) -> Weekday {
+        Weekday(rawValue: Calendar.current.component(.weekday, from: date)) ?? .monday
     }
 }
 
